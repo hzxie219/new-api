@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-03-02T00:00:00Z",
+  "git_commit": "21cfc1ca3804d547082b4eb806042cb659816c73",
+  "git_branch": "main",
+  "generator_version": "1.0.0",
+  "repository_info": {
+    "primary_language": "Go",
+    "frameworks": ["Gin", "GORM", "React", "Vite"],
+    "is_library": false,
+    "has_api": true
+  },
+  "repository_dependencies": [
+    "gin-gonic/gin",
+    "gorm.io/gorm",
+    "go-redis/redis",
+    "stretchr/testify",
+    "tidwall/gjson",
+    "nicksnyder/go-i18n",
+    "grafana/pyroscope-go",
+    "openai",
+    "anthropic",
+    "google-gemini",
+    "aws-bedrock",
+    "stripe-go",
+    "react",
+    "vite",
+    "@douyinfe/semi-ui"
+  ]
+}

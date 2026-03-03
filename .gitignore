@@ -27,3 +27,7 @@ data/
 .gomodcache/
 .gocache-temp
 .gopath
+
+# Claude Code local config (machine-specific paths/permissions)
+.claude/settings.local.json
+.claude/temp/

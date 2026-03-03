@@ -291,6 +291,71 @@ type TokenBatch struct {
 	Ids []int `json:"ids"`
 }
 
+// IPPolicyRequest is the request body DTO for PUT /api/token/:id/ip_policy.
+type IPPolicyRequest struct {
+	Mode string   `json:"mode"` // "whitelist" | "blacklist" | "" (clear)
+	Ips  []string `json:"ips"`  // CIDR list; ignored when Mode is ""
+}
+
+const maxIPPolicyEntries = 100
+
+// UpdateTokenIPPolicy sets or clears the IP access policy for a token.
+func UpdateTokenIPPolicy(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	var req IPPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	if req.Mode != "" && req.Mode != "whitelist" && req.Mode != "blacklist" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid mode: " + req.Mode})
+		return
+	}
+
+	if len(req.Ips) > maxIPPolicyEntries {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "too many IP entries, max 100"})
+		return
+	}
+
+	if req.Mode != "" && len(req.Ips) > 0 {
+		if err := common.ValidateCIDRList(req.Ips); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+	}
+
+	token, err := model.GetTokenById(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "not found"})
+		return
+	}
+
+	currentUserId := c.GetInt("id")
+	if token.UserId != currentUserId && !model.IsAdmin(currentUserId) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "forbidden"})
+		return
+	}
+
+	if req.Mode == "" {
+		token.IPPolicy = nil
+	} else {
+		token.IPPolicy = &model.IPPolicy{Mode: req.Mode, Ips: req.Ips}
+	}
+
+	if err := token.UpdateIPPolicy(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+}
+
 func DeleteTokenBatch(c *gin.Context) {
 	tokenBatch := TokenBatch{}
 	if err := c.ShouldBindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {

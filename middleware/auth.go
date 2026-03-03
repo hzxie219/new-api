@@ -329,6 +329,30 @@ func TokenAuth() func(c *gin.Context) {
 			logger.LogDebug(c, "Client IP %s passed the token IP restrictions check", clientIp)
 		}
 
+		// [F004] Extract real client IP with trusted-proxy awareness.
+		clientIP := common.GetClientIP(c)
+		c.Set("client_ip", clientIP)
+
+		// [F005] IPPolicy strategy enforcement (whitelist / blacklist).
+		if token.IPPolicy != nil && token.IPPolicy.Mode != "" {
+			cidrs, parseErr := common.ParseCIDRList(token.IPPolicy.Ips)
+			if parseErr != nil {
+				// fail-open: log WARN and continue without blocking
+				logger.LogWarn(c.Request.Context(), fmt.Sprintf(
+					"ip_policy_parse_failed: token_id=%d err=%s", token.Id, parseErr.Error()))
+			} else {
+				clientIPForPolicy := c.GetString("client_ip")
+				hit := common.IPMatchesCIDRList(clientIPForPolicy, cidrs)
+				blocked := (token.IPPolicy.Mode == "whitelist" && !hit) ||
+					(token.IPPolicy.Mode == "blacklist" && hit)
+				if blocked {
+					abortWithOpenAiMessage(c, http.StatusForbidden,
+						"IP_NOT_ALLOWED", types.ErrorCodeIpNotAllowed)
+					return
+				}
+			}
+		}
+
 		userCache, err := model.GetUserCache(token.UserId)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusInternalServerError, err.Error())

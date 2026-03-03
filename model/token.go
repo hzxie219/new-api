@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,44 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
+
+// IPPolicy defines the IP-based access control policy for a token.
+// Mode is either "whitelist", "blacklist", or "" (disabled).
+type IPPolicy struct {
+	Mode string   `json:"mode"`
+	Ips  []string `json:"ips"`
+}
+
+// Value implements the driver.Valuer interface so IPPolicy is stored as a JSON
+// string in the database. A nil receiver produces SQL NULL.
+func (p *IPPolicy) Value() (driver.Value, error) {
+	if p == nil {
+		return nil, nil
+	}
+	b, err := common.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
+}
+
+// Scan implements the sql.Scanner interface so GORM can load the JSON column
+// back into an IPPolicy. Supports both []byte and string driver values.
+func (p *IPPolicy) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
+		return fmt.Errorf("IPPolicy.Scan: unsupported type %T", value)
+	}
+	return common.Unmarshal(b, p)
+}
 
 type Token struct {
 	Id                 int            `json:"id"`
@@ -25,6 +64,7 @@ type Token struct {
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
+	IPPolicy           *IPPolicy      `json:"ip_policy,omitempty" gorm:"type:text;column:ip_policy"`
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
@@ -315,6 +355,23 @@ func (token *Token) Delete() (err error) {
 	}()
 	err = DB.Delete(token).Error
 	return err
+}
+
+// UpdateIPPolicy updates only the ip_policy column of the token.
+// Uses a direct Update call to correctly handle NULL (when token.IPPolicy is nil).
+// On success, the Redis cache entry for this token is invalidated asynchronously.
+func (token *Token) UpdateIPPolicy() (err error) {
+	defer func() {
+		if shouldUpdateRedis(true, err) {
+			gopool.Go(func() {
+				if err := cacheDeleteToken(token.Key); err != nil {
+					common.SysLog("failed to delete token cache after UpdateIPPolicy: " + err.Error())
+				}
+			})
+		}
+	}()
+	return DB.Model(&Token{}).Where("id = ?", token.Id).
+		Update("ip_policy", token.IPPolicy).Error
 }
 
 func (token *Token) IsModelLimitsEnabled() bool {

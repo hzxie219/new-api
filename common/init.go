@@ -121,6 +121,7 @@ func InitEnv() {
 	CriticalRateLimitNum = GetEnvOrDefault("CRITICAL_RATE_LIMIT", 20)
 	CriticalRateLimitDuration = int64(GetEnvOrDefault("CRITICAL_RATE_LIMIT_DURATION", 20*60))
 	initConstantEnv()
+	InitTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
 }
 
 func initConstantEnv() {

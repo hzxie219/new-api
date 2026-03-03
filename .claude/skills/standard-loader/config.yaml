@@ -1,0 +1,7 @@
+# 内部规范加载器配置
+
+# 外部规范开关
+# - true: 启用外部规范（Effective Go / PEP 8 / Google Style Guide）作为补充
+# - false: 仅使用内部规范（默认）
+external_standards:
+  enabled: false
